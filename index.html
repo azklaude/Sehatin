@@ -88,20 +88,15 @@
   <section id="doctor" data-view hidden>
     <div class="wrap narrow">
       <h1 tabindex="-1">AI Doctor</h1>
-      <div class="dochead">
-        <svg class="docav" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="19" fill="#E8D8CB"/><path d="M8 22h7l3-8 5 14 3-9 2 3h4" fill="none" stroke="#8A5738" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <div><b>SEHATIN Health Assistant</b><span>Asisten kesehatan edukatif</span></div>
-        <button class="btn ghost small" id="chatClear" type="button">Hapus percakapan</button>
-      </div>
-      <p class="note">Jawaban dibuat dari basis pengetahuan dan aturan yang sudah ditentukan, bukan dari dokter atau model AI. Percakapan tidak disimpan dan tidak dikirim ke mana pun.</p>
-      <div id="chat" class="chat" role="log" aria-live="polite" aria-label="Percakapan dengan asisten kesehatan" tabindex="0"></div>
-      <div id="chatOpts" class="chips" aria-label="Balasan cepat"></div>
+      <p class="lead">Asisten kesehatan berbasis aturan. Jawabannya dibuat dari aturan edukasi yang sudah ditentukan dan bukan penilaian dokter.</p>
+      <div id="chat" class="chat" role="log" aria-live="polite"></div>
+      <div id="chatOpts" class="chips"></div>
       <form id="chatForm" class="chatform" autocomplete="off">
         <label class="sr" for="chatIn">Tulis keluhanmu</label>
         <input id="chatIn" type="text" maxlength="120" placeholder="Tulis keluhanmu, misalnya: saya pusing">
-        <button class="btn" id="chatSend" type="submit">Kirim</button>
+        <button class="btn" type="submit">Kirim</button>
       </form>
-      <p class="note">Bukan pengganti dokter dan bukan diagnosis. Darurat medis: <b data-emerg>119</b>.</p>
+      <p class="note">Rule-based health assistant: jawaban dibuat dari aturan edukasi, bukan penilaian dokter. Darurat medis: <b data-emerg>119</b>.</p>
     </div>
   </section>
 

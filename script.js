@@ -290,7 +290,7 @@ const TOOLS = [
       const b = calcBMI(s.profile.heightCm, s.profile.weightKg), c = classifyBMI(b, s.profile.age);
       const how = "BMI = berat (kg) ÷ tinggi (m)². Untuk usia 20+: <18,5 kurang, 18,5–<25 sehat, 25–<30 berlebih, ≥30 obesitas. BMI hanya ukuran saring dan bukan penilaian kesehatan menyeluruh.";
       if (c.key === "child") return { title: "BMI", big: nf1.format(b), unit: "kg/m²", text: "Untuk usia di bawah 20 tahun, interpretasi BMI menggunakan kurva pertumbuhan berdasarkan usia dan jenis kelamin. Kalkulator ini tidak menerapkan kategori BMI dewasa.", next: "Tanyakan interpretasinya ke tenaga kesehatan.", how };
-      return { title: "BMI", big: nf1.format(b), unit: "kg/m²", badge: c, meter: { b, c }, text: { under: "BMI-mu di bawah rentang sehat dewasa.", ok: "BMI-mu ada di rentang sehat untuk dewasa.", over: "BMI-mu di atas rentang sehat dewasa.", obese: "BMI-mu masuk kategori obesitas pada klasifikasi dewasa." }[c.key] + (num(s.profile.age) ? "" : " Usia belum diisi, jadi kategori ini hanya berlaku bila usiamu 20 tahun ke atas."), next: "BMI tidak melihat otot, lemak, atau pola makan. Fokus pada kebiasaan kecil yang realistis dan bicarakan hasilnya dengan tenaga kesehatan bila ragu.", how };
+      return { title: "BMI", big: nf1.format(b), unit: "kg/m²", badge: c, meter: { b, c }, text: { under: "BMI-mu di bawah rentang sehat dewasa.", ok: "BMI-mu ada di rentang sehat untuk dewasa.", over: "BMI-mu di atas rentang sehat dewasa.", obese: "BMI-mu masuk kategori obesitas pada klasifikasi dewasa." }[c.key], next: "BMI tidak melihat otot, lemak, atau pola makan. Fokus pada kebiasaan kecil yang realistis dan bicarakan hasilnya dengan tenaga kesehatan bila ragu.", how };
     } },
   { id: "bp", t: "Cek Tekanan Darah", d: "Klasifikasi dewasa dari satu pengukuran.", f: ["measurements.systolic", "measurements.diastolic", "profile.age", "x.warn"], opt: ["profile.age", "x.warn"],
     run(s, x) {
@@ -298,7 +298,7 @@ const TOOLS = [
       const big = `${s.measurements.systolic}/${s.measurements.diastolic}`;
       if (c.key === "minor") return { title: "Tekanan darah", big, unit: "mmHg", text: "Kategori tekanan darah dewasa tidak digunakan untuk usia di bawah 18 tahun. Hasil pengukuran perlu dinilai sesuai usia oleh tenaga kesehatan.", next: "Bawa hasil ini ke tenaga kesehatan.", how };
       const em = c.key === "severe" && x["x.warn"] === 1;
-      return { title: "Tekanan darah", big, unit: "mmHg", badge: c, text: `Angkamu masuk kategori ${c.l.toLowerCase()} pada klasifikasi dewasa. Satu pengukuran belum cukup untuk menegakkan diagnosis.`, alert: em ? EMTXT : c.key === "severe" ? "Ukur ulang setelah istirahat beberapa menit. Bila tetap tinggi, segera cari pertolongan medis." : "", next: c.key === "normal" ? "Pertahankan kebiasaanmu dan ukur berkala." : "Ukur lagi di waktu berbeda dalam keadaan tenang, duduk, dan istirahat dulu. Konsultasikan dengan tenaga kesehatan bila tetap tinggi.", how };
+      return { title: "Tekanan darah", big, unit: "mmHg", badge: c, text: `Angkamu masuk kategori ${c.l.toLowerCase()} pada klasifikasi dewasa. Satu pengukuran belum cukup untuk menegakkan diagnosis.`, alert: em ? `Ini bisa merupakan keadaan darurat. Segera cari pertolongan medis. Hubungi ${projectConfig.emergencyNumber} untuk darurat medis.` : c.key === "severe" ? "Ukur ulang setelah istirahat beberapa menit. Bila tetap tinggi, segera cari pertolongan medis." : "", next: c.key === "normal" ? "Pertahankan kebiasaanmu dan ukur berkala." : "Ukur lagi di waktu berbeda dalam keadaan tenang, duduk, dan istirahat dulu. Konsultasikan dengan tenaga kesehatan bila tetap tinggi.", how };
     } },
   { id: "dia", t: "Tes Risiko Diabetes", d: "Skor edukatif dari faktor risiko.", f: ["profile.age", "profile.heightCm", "profile.weightKg", "history.diabetesFamilyHistory", "history.hypertensionHistory", "lifestyle.activity"], opt: [],
     run: s => scoreRes("Skor risiko diabetes (edukatif)", calcDiabetes(s), `Poin dari usia, riwayat keluarga, tekanan darah tinggi, aktivitas rendah, dan BMI. Skor 5 ke atas dianggap lebih banyak faktor risiko, mengacu pada ambang CDC untuk prediabetes, tetapi ini bukan tes resmi. ${HOW}`, "Diagnosis hanya bisa lewat pemeriksaan darah. Bila banyak faktor muncul, pertimbangkan membahasnya dengan tenaga kesehatan.") },
@@ -350,272 +350,59 @@ function renderTools(id) {
   };
 }
 
+/* ===== AI Doctor (berbasis aturan) ===== */
+const SYM = [
+  ["sakit kepala", /kepala/, "Istirahat, minum air putih, dan kurangi layar. Catat kapan keluhan muncul."],
+  ["batuk", /batuk/, "Minum air hangat, istirahat, dan hindari asap rokok."],
+  ["pilek", /pilek|hidung|bersin/, "Istirahat, cukup cairan, dan jaga kebersihan tangan."],
+  ["sakit tenggorokan", /tenggorok/, "Minum air hangat dan istirahatkan suara."],
+  ["mual", /mual|muntah/, "Makan porsi kecil dan minum sedikit-sedikit agar tidak kekurangan cairan."],
+  ["pusing", /pusing|pening|kliyengan|berputar/, "Duduk atau berbaring dulu, minum air, dan bangun perlahan."],
+  ["demam", /demam|panas|meriang/, "Istirahat, banyak minum, dan pantau suhu tubuhmu."],
+  ["sakit perut", /perut|mulas|maag/, "Istirahat, makan ringan, dan hindari makanan pedas atau berminyak."],
+  ["pegal", /pegal|otot|linu|sendi/, "Peregangan ringan dan istirahat yang cukup."],
+  ["sulit tidur", /tidur|insomnia|begadang/, "Jam tidur konsisten dan kurangi layar sebelum tidur."],
+  ["sesak napas", /sesak|sesek|napas pendek|susah napas|sulit napas/, ""],
+  ["nyeri dada", /dada/, ""]
+];
+const EM = /pingsan|tidak sadar|lemah sebelah|kebas|sulit bicara|susah bicara|pelo|perdarahan hebat|darah banyak|bengkak (bibir|wajah|lidah)|sesak (napas )?(berat|sekali)/;
+const normText = t => t.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+const matchSym = t => [...SYM].reverse().find(x => x[1].test(t));
 function analyzeSymptom(sym, c) {
   const crit = sym === "sesak napas" || sym === "nyeri dada";
-  if (c.f === 1 || (c.v === 2 && crit)) return { lv: "urgent", l: "Darurat", t: EMTXT };
+  if (c.f === 1 || (c.v === 2 && crit)) return { lv: "urgent", l: "Darurat", t: `Ini bisa merupakan keadaan darurat. Segera cari pertolongan medis. Hubungi ${projectConfig.emergencyNumber} untuk darurat medis. Jangan menunggu hasil dari website ini.` };
   if (c.v === 2 || crit) return { lv: "high", l: "Cari bantuan medis segera", t: "Keluhan seperti ini bisa memiliki banyak penyebab. Sebaiknya segera periksakan ke tenaga kesehatan hari ini." };
   if (c.d === 2 || c.v === 1) return { lv: "mid", l: "Pertimbangkan konsultasi", t: "Keluhan seperti ini bisa memiliki banyak penyebab. Pertimbangkan konsultasi rutin dengan dokter bila belum membaik." };
   return { lv: "ok", l: "Pantau dulu", t: "Keluhan ringan seperti ini sering membaik dengan perawatan sederhana. Pantau perkembangannya." };
 }
-const normText = t => TextNormalizer.run(t);
-const EM = { test: t => { const r = TriageEngine.scan(normText(t)); return !!r && !r.ask; } };
-/* ===== AI Doctor: asisten edukatif berbasis aturan (tanpa server, tanpa API) ===== */
-const EMTXT = `Ini bisa merupakan keadaan darurat. Segera cari pertolongan medis atau hubungi ${projectConfig.emergencyNumber}. Jangan menunggu analisis dari website ini.`;
-const EMNOTE = "Ketersediaan layanan dan sistem respons darurat bisa berbeda di tiap daerah. Bila nomor itu tidak tersambung, minta bantuan orang di sekitarmu atau datangi fasilitas kesehatan terdekat.";
-const DUR = ["Baru hari ini", "1–3 hari", "Lebih dari 3 hari", "Lebih dari 1 minggu"], SEV = ["Ringan", "Sedang", "Berat"], TREND = ["Membaik", "Tetap sama", "Makin memburuk"];
-const RED = { k: "red", q: "Apakah sedang ada salah satu ini: nyeri dada berat, sesak napas berat, lemah atau kebas mendadak di satu sisi, sulit bicara, pingsan, kejang, atau perdarahan hebat?", o: ["Tidak ada", "Ya, ada", "Tidak yakin"] };
-const WARN_GEN = "Bila muncul sesak napas berat, nyeri dada, lemah atau kebas mendadak, sulit bicara, pingsan, atau kejang";
-
-/* Basis pengetahuan gejala. q = [pertanyaan khusus, pilihan]; u = indeks pilihan yang menaikkan urgensi; e = indeks yang dianggap darurat.
-   Isi bersifat edukasi umum, bukan aturan diagnosis, dan perlu ditinjau tenaga kesehatan sebelum dipakai luas. */
-const SYM = {
-  kepala: { n: "Sakit kepala", re: /kepala/, w: 1, p: /(sakit|nyeri) kepala|kepala( saya)? (sakit|nyeri)|migrain/, q: ["Bagaimana rasa nyerinya?", ["Seperti tertekan", "Berdenyut", "Sangat hebat dan datang mendadak", "Tidak yakin"]], u: [2], ex: "Sakit kepala sangat umum dan penyebabnya beragam, misalnya kurang tidur, kurang cairan, ketegangan otot, atau stres. Website ini tidak bisa menentukan penyebabnya.", tips: ["Istirahat di tempat yang tenang", "Minum air putih secukupnya", "Kurangi layar dan catat kapan keluhan muncul"], warn: ["Nyeri mendadak dan sangat hebat", "Demam disertai leher kaku", "Muntah terus-menerus", "Gangguan penglihatan atau bicara, atau lemah di satu sisi", "Muncul setelah benturan di kepala"] },
-  pusing: { n: "Pusing", re: /pusing/, q: ["Seperti apa rasanya?", ["Melayang atau hampir pingsan", "Berputar", "Hanya tidak seimbang", "Tidak yakin"]], u: [], ex: "Pusing bisa terkait posisi tubuh, kurang cairan atau makan, kurang tidur, dan banyak hal lain. Pusing berputar dan rasa hampir pingsan punya banyak kemungkinan penyebab.", tips: ["Duduk atau berbaring dulu", "Minum air putih", "Bangun dari posisi berbaring secara perlahan"], warn: ["Pingsan", "Nyeri dada atau jantung berdebar kencang", "Sulit bicara atau lemah di satu sisi", "Pandangan ganda"] },
-  demam: { n: "Demam", re: /demam|panas/, q: ["Apakah suhu sudah diukur?", ["Belum diukur", "Di bawah 38 °C", "38 °C atau lebih", "39,5 °C atau lebih"]], u: [3], ex: "Demam adalah tanda bahwa tubuh sedang bereaksi terhadap sesuatu, sering karena infeksi. Tinggi suhu saja belum menunjukkan penyebabnya.", tips: ["Istirahat dan perbanyak minum", "Pakai pakaian yang nyaman", "Ukur suhu berkala dan catat"], warn: ["Suhu sangat tinggi atau demam lebih dari 3 hari", "Leher kaku atau ruam menyebar", "Sulit minum atau sangat lemas", "Sesak napas"] },
-  batuk: { n: "Batuk", re: /batuk/, q: ["Jenis batuknya?", ["Kering", "Berdahak", "Ada darah di dahak", "Tidak yakin"]], u: [2], ex: "Batuk adalah refleks tubuh untuk membersihkan saluran napas. Bisa dipicu infeksi, alergi, atau iritasi seperti asap.", tips: ["Minum air hangat", "Istirahat", "Hindari asap rokok dan debu"], warn: ["Batuk berdarah", "Sesak napas", "Batuk lebih dari 2–3 minggu", "Demam tinggi yang tidak turun"] },
-  pilek: { n: "Pilek atau hidung tersumbat", re: /pilek|hidung|bersin/, q: ["Apa yang paling terasa?", ["Hidung tersumbat atau meler", "Bersin-bersin", "Mata gatal dan berair", "Tidak yakin"]], u: [], ex: "Pilek bisa terkait infeksi virus atau alergi. Keduanya mirip, jadi gejala saja tidak selalu cukup untuk membedakannya.", tips: ["Istirahat dan cukup cairan", "Cuci tangan rutin", "Hindari pemicu seperti debu bila terasa memengaruhi"], warn: ["Demam tinggi", "Nyeri wajah hebat", "Sesak napas", "Keluhan lebih dari 10 hari"] },
-  tenggorokan: { n: "Sakit tenggorokan", re: /tenggorok|menelan/, q: ["Apakah sulit menelan atau minum?", ["Tidak", "Sedikit", "Sangat sulit, bahkan air liur sulit tertelan"]], u: [2], ex: "Sakit tenggorokan paling sering terkait infeksi virus atau iritasi. Penyebab pastinya perlu pemeriksaan.", tips: ["Minum air hangat", "Istirahatkan suara", "Hindari asap rokok"], warn: ["Sulit bernapas atau menelan air liur", "Demam tinggi", "Pembengkakan di leher atau wajah", "Lebih dari seminggu"] },
-  mual: { n: "Mual atau muntah", re: /mual|muntah/, q: ["Apakah sudah muntah?", ["Belum", "Beberapa kali", "Terus-menerus atau tidak bisa minum", "Ada darah"]], u: [2, 3], ex: "Mual dan muntah punya banyak penyebab, dari makanan hingga infeksi. Risiko utamanya adalah kekurangan cairan.", tips: ["Minum sedikit-sedikit tapi sering", "Makan porsi kecil dan ringan", "Istirahat"], warn: ["Muntah darah", "Tidak bisa minum sama sekali", "Nyeri perut hebat", "Tanda dehidrasi: sangat haus, jarang buang air kecil"] },
-  perut: { n: "Sakit perut", re: /perut|mulas|maag/, p: /(sakit|nyeri) perut|perut( saya)? (sakit|nyeri)/, q: ["Di mana lokasinya?", ["Ulu hati atau perut atas", "Sekitar pusar", "Perut kanan bawah", "Seluruh perut"]], u: [2], ex: "Keluhan perut punya banyak kemungkinan penyebab, dari pencernaan hingga hal lain. Lokasi dan perkembangan nyeri membantu tenaga kesehatan menilai.", tips: ["Istirahat", "Makan ringan dan hindari makanan pedas atau berminyak", "Catat kapan nyeri muncul dan apa yang memicunya"], warn: ["Nyeri makin hebat atau perut keras", "Muntah terus-menerus", "Tinja hitam atau berdarah", "Demam"] },
-  diare: { n: "Diare", re: /diare|bab cair/, q: ["Apakah masih bisa minum dan buang air kecil seperti biasa?", ["Ya", "Agak berkurang", "Sulit minum atau jarang buang air kecil"]], u: [2], ex: "Diare sering terkait infeksi atau makanan. Yang terpenting adalah mencegah kekurangan cairan.", tips: ["Minum cairan sedikit demi sedikit", "Makan makanan ringan", "Cuci tangan dengan sabun"], warn: ["Tinja berdarah", "Tanda dehidrasi", "Demam tinggi", "Lebih dari 2 hari"] },
-  sembelit: { n: "Susah buang air besar", re: /sembelit|konstipasi|susah bab|sulit bab/, q: ["Sudah berapa lama?", ["1–2 hari", "3–6 hari", "Lebih dari seminggu", "Disertai nyeri perut hebat"]], u: [3], ex: "Sembelit sering terkait kurang serat, kurang cairan, atau kurang gerak.", tips: ["Tambah serat dari sayur dan buah", "Minum air putih", "Bergerak ringan"], warn: ["Nyeri perut hebat dan perut kembung keras", "Darah pada tinja", "Muntah", "Berlangsung lebih dari seminggu"] },
-  otot: { n: "Nyeri otot", re: /otot|pegal|linu/, q: ["Apa konteksnya?", ["Setelah aktivitas fisik", "Tanpa sebab yang jelas", "Ada bengkak atau kemerahan", "Tidak yakin"]], u: [], ex: "Nyeri otot sering muncul setelah aktivitas, posisi tubuh yang lama, atau kurang istirahat.", tips: ["Istirahat dan peregangan ringan", "Perbaiki posisi duduk", "Bergerak bertahap"], warn: ["Bengkak, merah, dan hangat di satu tungkai", "Urine sangat gelap", "Lemah yang makin parah", "Nyeri hebat setelah cedera"] },
-  sendi: { n: "Nyeri sendi", re: /sendi/, q: ["Apakah sendi bengkak atau merah?", ["Tidak", "Sedikit", "Ya, jelas dan terasa hangat"]], u: [2], ex: "Nyeri sendi bisa terkait cedera, penggunaan berlebih, atau kondisi lain yang perlu pemeriksaan.", tips: ["Istirahatkan sendi", "Hindari gerakan yang memicu nyeri", "Catat kapan nyeri paling terasa"], warn: ["Sendi bengkak, merah, dan panas", "Tidak bisa digerakkan", "Demam", "Setelah cedera"] },
-  mata: { n: "Keluhan mata", re: /mata/, q: ["Apa yang dirasakan?", ["Perih atau gatal", "Merah dan berair", "Penglihatan kabur atau menurun", "Nyeri hebat"]], u: [2, 3], ex: "Mata lelah, kering, atau iritasi sering terjadi, tetapi perubahan penglihatan perlu diperhatikan.", tips: ["Istirahatkan mata dari layar", "Jangan mengucek", "Jaga kebersihan tangan"], warn: ["Penglihatan menurun mendadak", "Nyeri mata hebat", "Cedera pada mata", "Kelopak sangat bengkak"] },
-  kulit: { n: "Gangguan kulit", re: /kulit|ruam|gatal|biduran/, q: ["Bagaimana kondisinya?", ["Gatal ringan", "Ruam menyebar", "Lepuh atau nyeri", "Bengkak di wajah atau bibir"]], u: [1, 2], e: [3], ex: "Iritasi dan ruam bisa dipicu alergi, gigitan serangga, atau kontak dengan bahan tertentu.", tips: ["Hindari menggaruk", "Jauhi pemicu yang dicurigai", "Jaga kulit bersih dan kering"], warn: ["Bengkak di wajah, bibir, atau lidah", "Sesak napas", "Ruam menyebar cepat dengan demam", "Lepuh luas"] },
-  lelah: { n: "Badan lemas atau tidak enak", re: /lemas|lelah|capek|letih|badan.{0,12}tidak enak/, q: ["Bagaimana tidur dan makanmu belakangan?", ["Cukup baik", "Kurang tidur", "Nafsu makan turun", "Tidak yakin"]], u: [], ex: "Rasa lelah sering terkait kurang tidur, stres, atau pola makan, tetapi bisa juga tanda kondisi lain bila menetap.", tips: ["Tidur cukup dan konsisten", "Makan teratur dan minum cukup", "Bergerak ringan"], warn: ["Lemas yang makin parah", "Berat badan turun tanpa sebab", "Sesak napas", "Berlangsung lebih dari 2 minggu"] },
-  tidur: { n: "Gangguan tidur", re: /tidur|insomnia|begadang|mengantuk/, q: ["Apa masalah tidurnya?", ["Sulit mulai tidur", "Sering terbangun", "Bangun terlalu pagi", "Mengantuk berlebihan"]], u: [], ex: "Gangguan tidur sering terkait jadwal, stres, kafein, dan penggunaan layar malam hari.", tips: ["Jam tidur dan bangun konsisten", "Kurangi layar dan kafein menjelang tidur", "Kamar yang gelap dan tenang"], warn: ["Mengantuk berat saat beraktivitas atau berkendara", "Henti napas saat tidur", "Berlangsung lebih dari 3 minggu"] },
-  haid: { n: "Nyeri haid", re: /haid|menstruasi|datang bulan/, q: ["Seperti apa nyerinya?", ["Ringan", "Mengganggu aktivitas", "Sangat hebat atau darah sangat banyak"]], u: [2], ex: "Nyeri ringan hingga sedang saat haid cukup umum, tetapi nyeri yang mengganggu perlu dibicarakan.", tips: ["Istirahat dan kompres hangat di perut bawah", "Minum cukup", "Catat siklus dan keluhanmu"], warn: ["Perdarahan sangat banyak", "Nyeri sangat hebat", "Pingsan", "Haid tidak biasa disertai demam"] },
-  sesak: { n: "Sesak napas", re: /sesak|napas/, crit: 1, q: ["Kapan sesak terasa?", ["Saat aktivitas", "Saat istirahat", "Muncul mendadak"]], u: [1], e: [2], ex: "Sesak napas bisa punya banyak penyebab dan sebagian serius. Website ini tidak bisa menilai penyebabnya.", tips: [], warn: ["Sesak saat istirahat", "Bibir atau wajah membiru", "Nyeri dada", "Sulit bicara satu kalimat penuh"] },
-  dada: { n: "Nyeri atau tidak nyaman di dada", re: /dada/, crit: 1, q: ["Seperti apa rasanya?", ["Nyeri tajam saat bergerak atau menarik napas", "Tertekan atau berat", "Menjalar ke lengan, rahang, atau punggung", "Berdebar"]], u: [3], e: [1, 2], ex: "Keluhan di dada punya banyak kemungkinan penyebab. Sebagian tidak berbahaya, sebagian serius, dan tidak bisa dibedakan lewat website.", tips: [], warn: ["Rasa tertekan atau berat", "Menjalar ke lengan atau rahang", "Keringat dingin", "Sesak napas"] }
-};
-const CATS = [["Kepala & otak", "head", ["kepala", "pusing"]], ["Mata", "eye", ["mata"]], ["Hidung & tenggorokan", "nose", ["pilek", "tenggorokan", "batuk"]], ["Dada & pernapasan", "chest", ["sesak", "dada", "batuk"]], ["Perut & pencernaan", "gut", ["perut", "mual", "diare", "sembelit"]], ["Otot & sendi", "joint", ["otot", "sendi"]], ["Kulit", "skin", ["kulit"]], ["Gejala tubuh umum", "body", ["demam", "lelah", "tidur", "haid"]]];
-const QUICK = ["kepala", "demam", "batuk", "pusing", "perut", "mual", "tidur"];
-const EDU = [
-  { q: "Apa itu tekanan darah?", re: /tekanan darah|tensi/, a: "Tekanan darah adalah kekuatan aliran darah terhadap dinding pembuluh. Ditulis dua angka: atas (sistolik) dan bawah (diastolik), dalam mmHg. Pada orang dewasa, di bawah 120/80 tergolong normal. Anak dan remaja memakai acuan yang berbeda sesuai usia.", w: "Bila angkanya tetap tinggi atau disertai nyeri dada, sesak, atau sakit kepala hebat." },
-  { q: "Apa penyebab umum sakit kepala?", re: /(penyebab|kenapa|mengapa).*kepala|kepala.*penyebab/, a: "Sakit kepala sering terkait kurang tidur, kurang cairan, ketegangan otot, stres, atau terlalu lama menatap layar. Sebagian bentuk lain, seperti migrain, punya pola khusus.", w: "Bila nyeri mendadak sangat hebat, berulang, atau disertai gangguan penglihatan, bicara, atau lemah di satu sisi." },
-  { q: "Mengapa tidur penting?", re: /tidur/, h: 1, a: "Saat tidur, tubuh dan otak memulihkan diri. Tidur yang cukup membantu konsentrasi, suasana hati, dan daya tahan tubuh. Kebutuhan tiap usia berbeda, remaja umumnya butuh lebih banyak daripada dewasa.", w: "Bila sulit tidur berlangsung lebih dari beberapa minggu atau mengganggu aktivitas." },
-  { q: "Apa perbedaan flu dan alergi?", re: /flu.*alergi|alergi.*flu|beda.*(flu|pilek)/, a: "Flu biasanya disertai demam, pegal, dan lemas, dan membaik dalam beberapa hari. Alergi lebih sering disertai bersin berulang, mata gatal, dan tanpa demam, serta kambuh saat terpapar pemicu. Gejalanya bisa tumpang tindih.", w: "Bila gejala lebih dari 10 hari, demam tinggi, atau sesak napas." },
-  { q: "Bagaimana cara menjaga hidrasi?", re: /hidrasi|cairan|minum air/, h: 1, a: "Biasakan minum air putih sepanjang hari, tidak menunggu sampai haus sekali. Tambah asupan saat panas, berolahraga, atau sakit. Warna urine kuning pucat umumnya tanda cairan cukup.", w: "Bila ada orang dengan penyakit ginjal atau jantung yang dibatasi cairannya, ikuti anjuran tenaga kesehatan." },
-  { q: "Apa fungsi BMI?", re: /bmi|indeks massa/, a: "BMI membandingkan berat dengan tinggi badan sebagai ukuran saring. BMI tidak membedakan otot dan lemak. Kategori dewasa (20+) tidak dipakai untuk anak dan remaja, yang memakai kurva pertumbuhan.", w: "Bila ragu dengan hasilnya, atau pada anak dan remaja." },
-  { q: "Bagaimana membangun kebiasaan sehat?", re: /kebiasaan sehat/, h: 1, a: "Pilih satu perubahan kecil yang realistis, misalnya jalan kaki 10–15 menit atau mengganti satu minuman manis dengan air putih, lalu jalani dua minggu sebelum menambah yang lain.", w: "Bila punya kondisi kesehatan tertentu sebelum mengubah olahraga atau pola makan." }
-];
-const QW = /\b(apa|apakah|mengapa|kenapa|bagaimana|gimana|cara|fungsi|perbedaan|beda|penyebab|pentingnya)\b/, RESTART = /\b(mulai ulang|ulangi|reset|mulai lagi|dari awal)\b/;
-
-/* ===== TextNormalizer ===== */
-const TextNormalizer = {
-  slang: [[/\b(nggak|ngga|gak|enggak|ga|tak)\b/g, "tidak"], [/\b(banget|bgt|bngt)\b/g, "sekali"], [/\b(kliyengan|kleyengan|puyeng|nggliyer)\b/g, "pusing"], [/\bmules\b/g, "mulas"], [/\b(sesek|sesak nafas)\b/g, "sesak napas"], [/\bnafas\b/g, "napas"], [/\bngomong\b/g, "bicara"], [/\blemes\b/g, "lemas"], [/\bpala\b/g, "kepala"], [/\b(mencret)\b/g, "diare"], [/\bpanas dingin\b/g, "demam"], [/\bmeriang\b/g, "demam"], [/\butk\b/g, "untuk"], [/\byg\b/g, "yang"]],
-  run(t) {
-    let s = String(t).toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\b([a-z]{3,})(ku|mu)\b/g, "$1");
-    for (const [r, v] of this.slang) s = s.replace(r, v);
-    return s.replace(/\s+/g, " ").trim();
-  }
-};
-
-/* ===== TriageEngine: dijalankan lebih dulu pada setiap masukan ===== */
-const EMP = [
-  ["sulit bernapas berat", /napas (yang )?(berat|sesak sekali)|(sesak|susah|sulit)( napas)? (sekali|berat)|(susah|sulit) sekali( untuk| buat)? napas|tidak bisa (bernapas|napas)/],
-  ["nyeri atau tekanan hebat di dada", /(nyeri|sakit|tekan|tertindih|ditekan|remas)\w* (di )?dada.{0,14}(berat|sekali|hebat|menjalar)|dada.{0,10}(nyeri|sakit|sesak|tertekan) (yang )?(berat|sekali|hebat)/],
-  ["lemah atau kebas mendadak di satu sisi", /(lemah|lemas|kebas|mati rasa|kesemutan).{0,24}(sebelah|satu sisi)|(sebelah|satu sisi).{0,24}(lemah|lemas|kebas|mati rasa)|wajah (mencong|perot|turun)/],
-  ["sulit bicara mendadak", /(susah|sulit|tidak bisa).{0,8}bicara|bicara.{0,6}pelo|\bpelo\b/],
-  ["pingsan atau kejang", /pingsan|tidak sadar|hilang kesadaran|kejang/],
-  ["perdarahan hebat", /(perdarahan|pendarahan|darah).{0,14}(hebat|banyak|tidak berhenti|deras)/],
-  ["bengkak bibir, lidah, atau tenggorokan", /(bengkak|membengkak).{0,12}(bibir|wajah|lidah|tenggorok)|(lidah|tenggorokan).{0,10}bengkak/]
-].map(([l, r]) => [l, new RegExp(r.source, "g")]);
-const TriageEngine = {
-  negated: (t, i) => /\b(tidak|bukan|belum|tanpa)\b/.test(t.slice(0, i).trim().split(" ").slice(-3).join(" ")),
-  /* null = tidak ada tanda; {label, ask:true} = pertanyaan hipotetis, perlu konfirmasi; {label} = darurat */
-  scan(t) {
-    for (const [label, re] of EMP) for (const m of t.matchAll(re)) {
-      if (this.negated(t, m.index)) continue;
-      const hyp = /^(apa|apakah|bagaimana|gimana|kenapa|mengapa|jika|kalau|bila|misalnya)\b/.test(t) && !/\b(saya|aku|sedang|lagi|sekarang|barusan|tadi|tiba)\b/.test(t);
-      return { label, ask: hyp };
-    }
-    return null;
-  },
-  /* 0 umum, 1 konsultasi, 2 segera diperiksa, 3 darurat. Ini tingkat urgensi saran, bukan tingkat penyakit. */
-  level(C, S) {
-    const a = C.a; let u = 0; const up = n => { u = Math.max(u, n); };
-    if (S.crit || C.flags.includes("unsure") || a.sev === 2 || S.u?.includes(a.sp)) up(2);
-    if (a.sev === 1 || a.trend === 2 || a.dur >= 2) up(1);
-    if (C.age === "minor" && (a.sev >= 1 || a.dur >= 1)) up(1);
-    const hc = C.ctx ? Doc.hc() : null;
-    if (hc?.bpHigh && ["kepala", "pusing", "dada", "sesak"].includes(C.sym)) up(1);
-    return u;
-  }
-};
-
-/* ===== IntentRecognizer ===== */
-const Recognizer = {
-  symptoms(t) {
-    const n = r => (t.match(new RegExp(r.source, "g")) || []).length;
-    return Object.entries(SYM).map(([id, s]) => [id, Math.min(n(s.re), 2) * (s.w || 2) + (s.p ? n(s.p) * 3 : 0)]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]);
-  },
-  parse(t) {
-    if (RESTART.test(t)) return { intent: "restart" };
-    if (!/\b(saya|aku)\b/.test(t) && QW.test(t)) { const i = EDU.findIndex(e => e.re.test(t)); if (i >= 0) return { intent: "education", i }; }
-    const s = this.symptoms(t);
-    if (s.length) { const top = s[0][1], gap = top - (s[1] ? s[1][1] : 0); return top >= 2 && gap >= 1 ? { intent: "symptom", sym: s[0][0] } : { intent: "ambiguous", cands: s.slice(0, 3).map(x => x[0]) }; }
-    return { intent: QW.test(t) ? "general" : "unknown" };
-  }
-};
-
-/* ===== DoctorUI + ConversationEngine + AssessmentReport + HealthContext ===== */
-const P = (...k) => h("p", {}, ...k);
 const Doc = {
-  C: null, busy: false,
-  newConv: () => ({ id: Math.random().toString(36).slice(2), status: "idle", intent: null, sym: null, qs: [], qi: 0, a: {}, flags: [], age: null, ctx: null, urgency: null }),
-  /* --- tampilan --- */
-  say(content, who = "bot", cls = "") {
-    const c = $("#chat"), near = c.scrollHeight - c.scrollTop - c.clientHeight < 80, n = h("div", { class: `msg ${who} ${cls}` });
-    n.append(content); c.append(n);
-    if (near || who === "me") c.scrollTop = c.scrollHeight;
-    return n;
-  },
-  lock() { const b = $("#chatSend"); if (b) b.disabled = this.busy; },
-  reply(fn) {
-    const C = this.C; this.busy = true; this.lock();
-    const tp = this.say(h("span", { class: "typing", role: "status", "aria-label": "Asisten sedang menyusun jawaban" }, h("i"), h("i"), h("i")));
-    setTimeout(() => { tp.remove(); this.busy = false; this.lock(); if (this.C === C && C.status !== "emergency") fn(); }, reduced() ? 0 : 400);
-  },
-  opts(list, fn, nav = false) {
-    const box = $("#chatOpts");
-    box.replaceChildren(...list.map((t, i) => h("button", { type: "button", class: "chip", onclick: () => { if (this.busy) return; this.say(t, "me"); box.replaceChildren(); fn(i, t); } }, t)));
-    if (nav && this.C.qi > 0) box.append(h("button", { type: "button", class: "chip ghost", onclick: () => this.back() }, "Ubah jawaban sebelumnya"));
-    if (nav) box.append(h("button", { type: "button", class: "chip ghost", onclick: () => this.restart() }, "Mulai ulang"));
-  },
-  /* --- siklus percakapan --- */
+  say(t, who = "bot", cls = "") { const c = $("#chat"); c.append(h("div", { class: `msg ${who} ${cls}` }, t)); c.scrollTop = c.scrollHeight; },
+  opts(list, fn) { $("#chatOpts").replaceChildren(...list.map((t, i) => h("button", { type: "button", class: "chip", onclick: () => { this.say(t, "me"); $("#chatOpts").replaceChildren(); fn(t, i); } }, t))); },
   reset() {
-    this.C = this.newConv(); this.busy = false; this.lock();
-    $("#chat").replaceChildren(); $("#chatOpts").replaceChildren();
-    this.say(h("div", {}, P(`Halo! Aku ${siteConfig.shortName} Health Assistant.`), P("Aku bisa membantu memahami keluhan kesehatan umum, menjelaskan faktor yang mungkin berkaitan, dan memberi panduan awal dari informasi yang kamu berikan."), P("Apa yang sedang kamu rasakan hari ini?")));
-    this.menu();
-  },
-  restart() { this.C = this.newConv(); this.say("Baik, kita mulai dari awal."); this.menu(); },
-  menu() {
-    this.C.status = "idle";
-    this.opts(["Ceritakan keluhanku", "Jelajahi gejala", "Tanya tentang kesehatan", "Pelajari kebiasaan sehat"], i => [() => this.quick(), () => this.explorer(), () => this.eduMenu(), () => this.eduMenu(true)][i]());
-  },
-  quick() {
-    this.say("Pilih salah satu, atau tulis keluhanmu dengan kata-katamu sendiri.");
-    this.opts([...QUICK.map(k => SYM[k].n), "Keluhan lainnya"], i => i < QUICK.length ? this.start(QUICK[i]) : this.explorer());
-  },
-  explorer() {
-    this.say("Pilih bagian tubuh yang terasa tidak nyaman.");
-    this.opts(CATS.map(c => c[0]), i => this.explorerCat(i));
-  },
-  explorerCat(i) {
-    const [name, , ids] = CATS[i];
-    this.say(`${name}: yang mana yang paling mendekati?`);
-    this.opts([...ids.map(k => SYM[k].n), "Kembali"], j => j < ids.length ? this.start(ids[j]) : this.explorer());
-  },
-  eduMenu(habits, after) {
-    const l = EDU.filter(e => !habits || e.h);
-    this.say(after ? "Ada hal lain yang ingin kamu tanyakan?" : habits ? "Topik kebiasaan sehat yang bisa aku jelaskan:" : "Aku hanya bisa menjawab topik edukasi yang sudah disiapkan. Pilih salah satu atau tulis pertanyaanmu.");
-    this.opts([...l.map(e => e.q), "Kembali"], i => i < l.length ? this.edu(EDU.indexOf(l[i])) : this.menu());
-  },
-  edu(i) {
-    const e = EDU[i];
-    this.reply(() => { this.say(h("div", {}, P(e.a), P(h("b", {}, "Kapan perlu konsultasi: "), e.w), P(h("small", {}, "Informasi edukasi umum, bukan nasihat medis pribadi.")))); this.eduMenu(false, true); });
-  },
-  emergency(label) {
-    const C = this.C; C.status = "emergency"; C.urgency = 3; this.busy = false; this.lock();
-    $$(".typing").forEach(e => e.parentNode.remove()); $("#chatOpts").replaceChildren();
-    this.say(h("div", { role: "alert" }, h("b", {}, "Kemungkinan keadaan darurat"), P(EMTXT), P("Nomor darurat: ", h("b", {}, projectConfig.emergencyNumber), `. ${EMNOTE}`), P("Website ini tidak dapat menilai atau menyingkirkan keadaan darurat. Bila ada orang di dekatmu, minta ia menemanimu sekarang."), P(`Yang terdeteksi: ${label}.`)), "bot", "urgent");
-    this.opts(["Mulai percakapan baru"], () => this.restart());
-  },
-  /* --- konteks Health Check (butuh persetujuan) --- */
-  hc() {
-    const s = App.state; if (!s.completed) return null;
-    const age = s.profile.age, bp = classifyBP(s.measurements.systolic, s.measurements.diastolic, age), rel = ["kepala", "pusing", "dada", "sesak"].includes(this.C?.sym), useBp = rel && bp && bp.key !== "minor", what = [num(age) ? "usia" : "", useBp ? "tekanan darah" : ""].filter(Boolean);
-    if (!what.length) return null;
-    const last = Store.history().slice(-1)[0];
-    return { age: num(age) ? age : null, bp: useBp ? bp : null, bpHigh: !!useBp && ["stage1", "stage2", "severe"].includes(bp.key), what: what.join(" dan "), when: last ? new Intl.DateTimeFormat("id-ID", { dateStyle: "medium" }).format(last.t) : "tanggal tidak tercatat" };
+    $("#chat").replaceChildren();
+    const r = App.state.completed ? computeAll(App.state) : null;
+    this.say("Aku bantu membaca keluhanmu berdasarkan aturan screening sederhana. Apa yang sedang kamu rasakan?");
+    if (r?.bp && ["elev", "stage1", "stage2", "severe"].includes(r.bp.key)) this.say("Catatan: dari data yang kamu isi sebelumnya (tersimpan di browser ini), tekanan darahmu tercatat di atas normal. Itu bisa ikut jadi konteks.");
+    this.opts(SYM.map(x => x[0]), t => this.start(t));
   },
   start(sym) {
-    const C = this.C, S = SYM[sym], hc = (C.sym = sym, this.hc());
-    Object.assign(C, { status: "asking", intent: "symptom", a: {}, flags: [], qi: 0, ctx: null, age: null });
-    C.qs = [
-      ...(hc ? [{ k: "ctx", q: `Pada Health Check sebelumnya (${hc.when}), kamu mengisi ${hc.what}. Apakah kamu ingin memakai informasi itu sebagai konteks percakapan ini? Itu data lama dan bisa saja sudah berubah.`, o: ["Ya, gunakan", "Tidak, lanjut tanpa data"] }] : []),
-      { k: "age", q: "Kamu berada di kelompok usia yang mana? Ini membantu aku menyesuaikan saran.", o: ["Di bawah 18 tahun", "18 tahun atau lebih", "Lewati"] },
-      RED, { k: "dur", q: "Sudah berapa lama keluhan ini?", o: DUR }, { k: "sev", q: "Seberapa berat rasanya?", o: SEV }, { k: "trend", q: "Apakah keluhannya membaik, tetap, atau memburuk?", o: TREND },
-      { k: "sp", q: S.q[0], o: S.q[1] }
-    ];
-    this.reply(() => { this.say(`Baik, ${S.n.toLowerCase()}. Aku akan menanyakan beberapa hal singkat.`); this.ask(); });
+    const c = {};
+    this.opts(["Baru hari ini", "1–3 hari", "Lebih dari 3 hari"], (_, d) => { c.d = d; this.ask("Apakah disertai salah satu ini: nyeri dada berat, sesak napas berat, lemah atau kebas mendadak, sulit bicara, pingsan, atau perdarahan hebat?", ["Tidak ada", "Ya, ada"], f => { c.f = f; this.ask("Seberapa berat keluhannya?", ["Ringan", "Sedang", "Berat atau makin memburuk"], v => { c.v = v; this.finish(sym, c); }); }); });
+    this.say(`Oke, ${sym}. Sudah berapa lama?`);
   },
-  skipped(q) { return q.k === "age" && this.C.age !== null && this.C.a.age === undefined; },
-  ask() {
-    const C = this.C;
-    while (C.qi < C.qs.length && this.skipped(C.qs[C.qi])) C.qi++;
-    if (C.qi >= C.qs.length) return this.finish();
-    const q = C.qs[C.qi]; this.say(q.q); this.opts(q.o, i => this.answer(q, i), true);
+  ask(q, list, fn) { this.say(q); this.opts(list, (_, i) => fn(i)); },
+  finish(sym, c) {
+    const a = analyzeSymptom(sym, c), tip = SYM.find(x => x[0] === sym)?.[2];
+    this.say(`${a.l}. ${a.t}${a.lv === "ok" || a.lv === "mid" ? " " + (tip || "") : ""} Informasi ini hanya panduan awal, bukan diagnosis.`, "bot", a.lv === "urgent" || a.lv === "high" ? "urgent" : "");
+    this.opts(["Mulai ulang"], () => this.reset());
   },
-  answer(q, i) {
-    const C = this.C, S = SYM[C.sym]; C.a[q.k] = i;
-    if (q.k === "age") C.age = ["minor", "adult", null][i];
-    if (q.k === "ctx") { C.ctx = i === 0; const hc = this.hc(); if (C.ctx && hc?.age != null && C.a.age === undefined) C.age = hc.age < 18 ? "minor" : "adult"; }
-    if (q.k === "red") { C.flags = C.flags.filter(f => f !== "unsure"); if (i === 1) return this.emergency("tanda bahaya yang kamu pilih"); if (i === 2) C.flags.push("unsure"); }
-    if (q.k === "sp" && S.e?.includes(i)) return this.emergency(S.q[1][i].toLowerCase());
-    C.qi++; this.reply(() => this.ask());
-  },
-  back() {
-    const C = this.C; if (C.qi < 1) return;
-    do C.qi--; while (C.qi > 0 && this.skipped(C.qs[C.qi]));
-    this.say("Baik, jawab ulang ya.", "bot"); this.ask();
-  },
-  /* --- masukan teks bebas --- */
   submit(raw) {
-    if (this.busy) return;
-    const t = TextNormalizer.run(raw); if (!t) return;
+    const t = normText(raw); if (!t) return;
     this.say(raw.trim(), "me");
-    const C = this.C, em = TriageEngine.scan(t);
-    if (em && !em.ask) return this.emergency(em.label);
-    if (em) return this.reply(() => { this.say(`Kamu menyebut “${em.label}”. Apakah itu sedang terjadi padamu atau orang di dekatmu sekarang?`); this.opts(["Ya, sedang terjadi", "Tidak, aku hanya bertanya"], i => i === 0 ? this.emergency(em.label) : this.reply(() => { this.say("Baik. Tanda seperti itu perlu dikenali, dan bila terjadi, segera cari pertolongan medis."); this.menu(); })); });
-    if (C.status === "emergency") return this.reply(() => { this.say(`Prioritaskan bantuan medis sekarang. Hubungi ${projectConfig.emergencyNumber} atau minta orang di dekatmu membantu.`, "bot", "urgent"); });
-    const r = Recognizer.parse(t); C.intent = r.intent;
-    if (C.status === "asking") {
-      const q = C.qs[C.qi], k = q.o.findIndex(o => { const n = TextNormalizer.run(o); return n === t || (t.length > 3 && n.includes(t)); });
-      if (k >= 0) return this.answer(q, k);
-      return this.reply(() => { this.say("Aku perlu jawaban untuk pertanyaan tadi. Pilih salah satu di bawah, atau tulis dengan kata lain."); this.opts(q.o, i => this.answer(q, i), true); });
-    }
-    if (r.intent === "restart") return this.restart();
-    this.reply(() => {
-      if (r.intent === "symptom") return this.start(r.sym);
-      if (r.intent === "education") return this.edu(r.i);
-      if (r.intent === "ambiguous") { this.say("Aku belum yakin maksudmu yang mana. Pilih yang paling sesuai:"); return this.opts([...r.cands.map(k => SYM[k].n), "Bukan salah satunya"], i => i < r.cands.length ? this.start(r.cands[i]) : this.explorer()); }
-      this.say(r.intent === "general" ? "Pertanyaan itu di luar bahan edukasi yang aku punya, dan aku tidak ingin menebak. Kamu bisa memilih topik yang tersedia, atau tanyakan ke tenaga kesehatan." : "Aku belum mengenali itu. Coba tulis dengan kata lain, atau pilih salah satu di bawah.");
-      this.menu();
-    });
-  },
-  /* --- laporan penilaian --- */
-  finish() {
-    const C = this.C, S = SYM[C.sym], a = C.a, u = TriageEngine.level(C, S), L = [["ok", "Panduan umum"], ["mid", "Pertimbangkan konsultasi"], ["high", "Perlu pemeriksaan segera"]][u], hc = C.ctx ? this.hc() : null;
-    C.status = "done"; C.urgency = u;
-    const pick = (arr, i) => (i == null || arr[i] == null ? "Belum diketahui" : arr[i]);
-    const rows = [["Keluhan utama", S.n], ["Durasi", pick(DUR, a.dur)], ["Tingkat keberatan", pick(SEV, a.sev)], ["Perkembangan", pick(TREND, a.trend)], [S.q[0].replace(/\?$/, ""), pick(S.q[1], a.sp)], ["Tanda bahaya umum", pick(["Tidak dilaporkan", "Dilaporkan", "Belum yakin"], a.red)], ["Kelompok usia", C.age === "minor" ? "Di bawah 18 tahun" : C.age === "adult" ? "18 tahun atau lebih" : "Belum diketahui"]];
-    const sec = (t, ...k) => h("section", { class: "rep-sec" }, h("h4", {}, t), ...k), ul = l => h("ul", { class: "plain" }, ...l.map(x => h("li", {}, x)));
-    const badgeEl = h("span", { class: `badge lv-${L[0]}` }, h("i", { "aria-hidden": "true" }, ICON[L[0]]), L[1]);
-    const next = u >= 2 ? ["Segera periksakan ke tenaga kesehatan hari ini, jangan menunggu keluhan hilang sendiri.", "Jangan sendirian: minta seseorang menemanimu."] : [...S.tips, "Pantau perkembangannya", u === 1 ? "Rencanakan konsultasi dengan tenaga kesehatan, terutama bila tidak membaik atau memburuk." : "Periksakan bila keluhan menetap atau memburuk."];
-    if (C.age === "minor") next.push("Ceritakan keluhanmu kepada orang tua, wali, atau orang dewasa yang kamu percaya.");
-    if (C.age === null) next.push("Usiamu belum diketahui, jadi saran ini tetap umum.");
-    const card = h("article", { class: "rep" + (u >= 2 ? " hi" : ""), "aria-label": "Hasil penilaian awal" },
-      h("h3", {}, "Ringkasan keluhan"), badgeEl,
-      P(`Kamu melaporkan ${S.n.toLowerCase()}. Durasi: ${pick(DUR, a.dur).toLowerCase()}; tingkat: ${pick(SEV, a.sev).toLowerCase()}; perkembangan: ${pick(TREND, a.trend).toLowerCase()}.`),
-      sec("Informasi yang terkumpul", h("dl", { class: "kv" }, ...rows.flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]))),
-      sec("Status penilaian", P(`${L[1]}. Ini tingkat urgensi saran, bukan tingkat keparahan penyakit, dan bukan diagnosis.`)),
-      sec("Penjelasan edukatif", P(S.ex)),
-      ...(hc ? [sec("Dari Health Check sebelumnya", P(`Yang kamu pakai sebagai konteks (${hc.when}): ${[hc.age != null ? `usia ${hc.age} tahun` : "", hc.bp ? `kategori tekanan darah “${hc.bp.l}”` : ""].filter(Boolean).join(", ")}. Ini data lama, bukan pengukuran saat ini.`))] : []),
-      sec("Langkah berikutnya", ul(next)),
-      sec("Tanda bahaya yang perlu diwaspadai", ul(S.warn), P(`${WARN_GEN}, segera cari pertolongan medis atau hubungi ${projectConfig.emergencyNumber}.`)),
-      P(h("small", {}, `${DISC} Aku tidak bisa memastikan penyebab keluhanmu.`)));
-    this.reply(() => {
-      this.say(card, "bot", "wide" + (u >= 2 ? " urgent" : ""));
-      this.opts(["Tanya hal lain", "Jelajahi gejala terkait", "Mulai penilaian baru"], i => {
-        if (i === 0) this.eduMenu();
-        else if (i === 1) this.explorerCat(Math.max(0, CATS.findIndex(c => c[2].includes(C.sym))));
-        else this.restart();
-      });
-    });
+    if (EM.test(t)) return this.finish("darurat", { f: 1 });
+    const m = matchSym(t);
+    if (m) this.start(m[0]);
+    else { this.say("Aku belum mengenali keluhan itu. Pilih salah satu di bawah, atau tulis dengan kata lain."); this.opts(SYM.map(x => x[0]), s => this.start(s)); }
   }
 };
 
@@ -669,10 +456,9 @@ function init() {
   $$("[data-emerg]").forEach(e => (e.textContent = projectConfig.emergencyNumber));
   $$("[data-cfg]").forEach(e => (e.textContent = projectConfig[e.dataset.cfg]));
   $("#toolGrid").innerHTML = [...TOOLS.map(t => [t.t, t.d, "#tools/" + t.id]), ["Tanya AI Doctor", "Asisten keluhan berbasis aturan.", "#doctor"]].map(([t, d, href]) => `<li><a href="${href}"><div><b>${t}</b><span>${d}</span></div><i>Open</i></a></li>`).join("");
-  $("#chatForm").onsubmit = e => { e.preventDefault(); const i = $("#chatIn"); if (Doc.busy || !i.value.trim()) return; Doc.submit(i.value); i.value = ""; };
-  $("#chatClear").onclick = () => { Doc.reset(); toast("Percakapan dihapus."); };
+  $("#chatForm").onsubmit = e => { e.preventDefault(); const i = $("#chatIn"); Doc.submit(i.value); i.value = ""; };
   addEventListener("hashchange", go);
   go();
 }
 if (typeof document !== "undefined") init();
-if (typeof module !== "undefined") module.exports = { calcBMI, classifyBMI, classifyBP, calcDiabetes, calcHypertension, calcCardio, calcSnapshot, analyzeSymptom, matchSym: t => Recognizer.symptoms(normText(t))[0]?.[0] ?? null, normText, EM, TextNormalizer, TriageEngine, Recognizer, SYM, Doc, blank, computeAll, Store, meterHTML, bmiAngle, BMI_CATS, spark, lipid };
+if (typeof module !== "undefined") module.exports = { calcBMI, classifyBMI, classifyBP, calcDiabetes, calcHypertension, calcCardio, calcSnapshot, analyzeSymptom, matchSym, normText, EM, blank, computeAll, Store, meterHTML, bmiAngle, BMI_CATS, spark, lipid };
